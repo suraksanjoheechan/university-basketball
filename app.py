@@ -3,6 +3,7 @@ import streamlit.components.v1 as components
 
 st.set_page_config(page_title="대학교 농구 게임 - 포물선 모드", layout="wide")
 
+# HTML/JS 시작
 game_html = """
 <!DOCTYPE html>
 <html lang="ko">
@@ -45,8 +46,8 @@ game_html = """
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const gravity = 0.35; // 포물선을 위해 중력 상향
-const powerFactor = 0.35; // 힘의 전달 계수
+const gravity = 0.35;
+const powerFactor = 0.35;
 
 const groups = [
     { id: 1, speed: 1.8, names: ["서울대", "연세대", "고려대", "성균관대", "서강대"], logos:["S","Y","K","S","S"], color: "#ff79c6" },
@@ -60,7 +61,6 @@ let firedBalls = [];
 let currentBall = null;
 let mousePos = {x:0, y:0};
 
-// 골대 상태 변수
 let hoopY = 300;
 let hoopVelocity = 3;
 let isHoopStopped = false;
@@ -100,12 +100,9 @@ class Ball {
     drawTrajectory() {
         let tx = (this.x - mousePos.x) * powerFactor * this.group.speed;
         let ty = (this.y - mousePos.y) * powerFactor * this.group.speed;
-        
-        // 포물선 강제화: 너무 빠른 일직선 발사 방지 (속도 캡핑)
         const maxV = 25;
         tx = Math.min(Math.max(tx, -maxV), maxV);
         ty = Math.min(Math.max(ty, -maxV), maxV);
-
         ctx.beginPath(); ctx.setLineDash([8, 12]); ctx.strokeStyle = "rgba(0,0,0,0.15)";
         let tempX = this.x, tempY = this.y, tempVX = tx, tempVY = ty;
         for (let i = 0; i < 40; i++) {
@@ -119,19 +116,13 @@ class Ball {
     update() {
         if (this.isFired) {
             this.x += this.vx; this.y += this.vy; this.vy += gravity;
-            
-            // 백보드 충돌 (튕김)
             if (this.x + this.radius > 1120 && this.x - this.radius < 1135 && this.y > 100 && this.y < 650) {
-                this.vx *= -0.6;
-                this.x = 1120 - this.radius;
+                this.vx *= -0.6; this.x = 1120 - this.radius;
             }
-
-            // 골대 판정
             if (!this.scored) {
                 if (this.x + this.radius > 1040 && this.x - this.radius < 1040 + hoopWidth &&
                     this.y + this.radius > hoopY && this.y - this.radius < hoopY + hoopHeight) {
-                    score++;
-                    this.scored = true;
+                    score++; this.scored = true;
                     document.getElementById('currentScore').innerText = score;
                 }
             }
@@ -140,58 +131,39 @@ class Ball {
 }
 
 function updateHoop() {
-    if (isHoopStopped) {
-        stopTimer--;
-        if (stopTimer <= 0) isHoopStopped = false;
-        return;
-    }
-
+    if (isHoopStopped) { stopTimer--; if (stopTimer <= 0) isHoopStopped = false; return; }
     let rand = Math.random();
     if (rand < 0.005) { isHoopStopped = true; stopTimer = 30 + Math.random() * 30; }
     else if (rand < 0.012) { hoopVelocity *= -1; }
-
     hoopY += hoopVelocity;
-    if (hoopY > hoopRange.max || hoopY < hoopRange.min) {
-        hoopVelocity *= -1;
-    }
+    if (hoopY > hoopRange.max || hoopY < hoopRange.min) { hoopVelocity *= -1; }
 }
 
 function drawHoopSystem() {
     ctx.fillStyle = "#34495e"; ctx.fillRect(1120, 100, 15, 550);
-    // 그물 그리기
     ctx.beginPath(); ctx.strokeStyle = "rgba(255, 255, 255, 0.6)"; ctx.lineWidth = 2;
     for(let i=0; i<=hoopWidth; i+=12) {
         ctx.moveTo(1040 + i, hoopY + hoopHeight);
         ctx.lineTo(1050 + (i*0.8), hoopY + hoopHeight + 50);
     }
     ctx.stroke();
-    // 림 그리기
     ctx.fillStyle = "#e74c3c"; ctx.fillRect(1040, hoopY, hoopWidth, hoopHeight);
     ctx.fillStyle = "#c0392b"; ctx.fillRect(1040 + hoopWidth, hoopY + 2, 20, 10);
 }
 
 function startGame() {
-    // 점수 초기화
-    score = 0;
-    timeLeft = 15.0;
-    isPlaying = true;
-    firedBalls = [];
-    
-    // UI 업데이트
+    score = 0; timeLeft = 15.0; isPlaying = true; firedBalls = [];
     document.getElementById('currentScore').innerText = score;
     document.getElementById('mainBestScore').innerText = bestScore;
     document.getElementById('bestScoreDisplay').innerText = bestScore;
-    
     document.getElementById('mainMenu').classList.add('hidden');
     document.getElementById('gameOver').classList.add('hidden');
     document.getElementById('hud').classList.remove('hidden');
-    
     currentBall = new Ball();
     gameLoop();
 }
 
-// 타이머 인터벌
-let timerId = setInterval(() => {
+setInterval(() => {
     if(isPlaying) {
         timeLeft -= 0.1;
         document.getElementById('timer').innerText = Math.max(0, timeLeft).toFixed(1);
@@ -201,10 +173,7 @@ let timerId = setInterval(() => {
 
 function endGame() {
     isPlaying = false;
-    if (score > bestScore) {
-        bestScore = score;
-        localStorage.setItem('univBestScore', bestScore);
-    }
+    if (score > bestScore) { bestScore = score; localStorage.setItem('univBestScore', bestScore); }
     document.getElementById('finalScore').innerText = score;
     document.getElementById('gameOver').classList.remove('hidden');
 }
@@ -213,15 +182,10 @@ function gameLoop() {
     if (!isPlaying) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#bdc3c7"; ctx.fillRect(0, 700, 1200, 50); 
-    
-    updateHoop();
-    drawHoopSystem();
-    
+    updateHoop(); drawHoopSystem();
     if (currentBall) currentBall.draw();
-
     for (let i = firedBalls.length - 1; i >= 0; i--) {
-        firedBalls[i].update();
-        firedBalls[i].draw();
+        firedBalls[i].update(); firedBalls[i].draw();
         if (firedBalls[i].y > 850 || firedBalls[i].x < -100 || firedBalls[i].x > 1300) firedBalls.splice(i, 1);
     }
     requestAnimationFrame(gameLoop);
@@ -244,6 +208,21 @@ canvas.addEventListener('mouseup', e => {
     if (currentBall && currentBall.isDragging) {
         let vx = (currentBall.x - mousePos.x) * powerFactor * currentBall.group.speed;
         let vy = (currentBall.y - mousePos.y) * powerFactor * currentBall.group.speed;
-        
-        // 포물선 강제화를 위한 속도 캡핑
         const maxV = 25;
+        currentBall.vx = Math.min(Math.max(vx, -maxV), maxV);
+        currentBall.vy = Math.min(Math.max(vy, -maxV), maxV);
+        currentBall.isDragging = false; currentBall.isFired = true;
+        firedBalls.push(currentBall);
+        currentBall = new Ball();
+    }
+});
+
+document.getElementById('mainBestScore').innerText = bestScore;
+document.getElementById('bestScoreDisplay').innerText = bestScore;
+</script>
+</body>
+</html>
+"""
+
+# HTML 변수를 닫는 따옴표 이후 Streamlit 실행 코드
+components.html(game_html, height=800)
