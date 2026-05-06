@@ -1,10 +1,8 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-# 페이지 설정
 st.set_page_config(page_title="대학교 농구 게임", layout="centered")
 
-# HTML/CSS/JS 코드를 변수에 담습니다.
 game_html = """
 <!DOCTYPE html>
 <html lang="ko">
@@ -56,13 +54,15 @@ game_html = """
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+const gravity = 0.25;
 const groups = [
     { id: 1, speed: 1.5, addTime: 7, names: ["서울대", "연세대", "고려대", "성균관대", "서강대", "한양대", "중앙대", "시립대", "경희대", "이화여대"] },
     { id: 2, speed: 1.0, addTime: 5, names: ["아주대", "단국대", "항공대", "가천대", "한국공대"] },
     { id: 3, speed: 0.6, addTime: 4, names: ["부산대", "경북대", "전남대", "충남대", "전북대"] }
 ];
+
 let score = 0, timeLeft = 7, isPlaying = false, bestScore = localStorage.getItem('univBestScore') || 0;
-let ball, animationId, timerInterval;
+let ball, animationId, timerInterval, mousePos = {x:0, y:0};
 
 class Ball {
     constructor() { this.reset(); }
@@ -70,31 +70,67 @@ class Ball {
         const group = groups[Math.floor(Math.random() * 3)];
         this.name = group.names[Math.floor(Math.random() * group.names.length)];
         this.group = group;
-        this.radius = 35; this.x = 100; this.y = 350;
+        this.radius = 32; this.x = 120; this.y = 380;
         this.vx = 0; this.vy = 0; this.isDragging = false; this.isFired = false;
     }
     draw() {
+        // 궤적 그리기 (드래그 중일 때만)
+        if (this.isDragging) {
+            this.drawTrajectory();
+        }
+        
         ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fillStyle = "#e67e22"; ctx.fill(); ctx.strokeStyle = "white"; ctx.lineWidth = 3; ctx.stroke();
-        ctx.fillStyle = "white"; ctx.font = "14px Jua"; ctx.textAlign = "center";
+        ctx.fillStyle = "#e67e22"; ctx.fill(); ctx.strokeStyle = "#d35400"; ctx.lineWidth = 3; ctx.stroke();
+        ctx.fillStyle = "white"; ctx.font = "bold 14px Jua"; ctx.textAlign = "center";
         ctx.fillText(this.name, this.x, this.y + 5);
     }
+    
+    drawTrajectory() {
+        const tx = (this.x - mousePos.x) * 0.15 * this.group.speed;
+        const ty = (this.y - mousePos.y) * 0.15 * this.group.speed;
+        
+        ctx.beginPath();
+        ctx.setLineDash([5, 8]);
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+        
+        let tempX = this.x;
+        let tempY = this.y;
+        let tempVX = tx;
+        let tempVY = ty;
+
+        for (let i = 0; i < 30; i++) { // 30단계의 미래 위치 계산
+            ctx.moveTo(tempX, tempY);
+            tempX += tempVX;
+            tempY += tempVY;
+            tempVY += gravity;
+            ctx.lineTo(tempX, tempY);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
     update() {
         if (this.isFired) {
-            this.x += this.vx; this.y += this.vy; this.vy += 0.25;
-            if (this.x > 680 && this.x < 760 && this.y > 180 && this.y < 220 && this.vy > 0) {
+            this.x += this.vx; this.y += this.vy; this.vy += gravity;
+            if (this.x > 690 && this.x < 770 && this.y > 160 && this.y < 210 && this.vy > 0) {
                 score++; timeLeft += this.group.addTime;
                 document.getElementById('currentScore').innerText = score;
                 this.reset();
             }
-            if (this.y > 600 || this.x > 850) this.reset();
+            if (this.y > 600 || this.x > 850 || this.x < -50) this.reset();
         }
     }
 }
+
 function drawHoop() {
-    ctx.strokeStyle = "#c0392b"; ctx.lineWidth = 8; ctx.strokeRect(700, 150, 80, 10);
-    ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.fillRect(770, 80, 10, 100);
+    // 백보드
+    ctx.fillStyle = "white";
+    ctx.fillRect(770, 100, 10, 100);
+    // 림 (골대)
+    ctx.strokeStyle = "#c0392b"; ctx.lineWidth = 6; 
+    ctx.strokeRect(700, 180, 70, 5);
 }
+
 function startGame() {
     score = 0; timeLeft = 7.0; isPlaying = true;
     document.getElementById('mainMenu').classList.add('hidden');
@@ -109,48 +145,58 @@ function startGame() {
     }, 100);
     gameLoop();
 }
+
 function endGame() {
     isPlaying = false; clearInterval(timerInterval);
     if (score > bestScore) { bestScore = score; localStorage.setItem('univBestScore', bestScore); }
     document.getElementById('finalScore').innerText = score;
     document.getElementById('gameOver').classList.remove('hidden');
 }
+
 function showMain() {
     document.getElementById('gameOver').classList.add('hidden');
     document.getElementById('mainMenu').classList.remove('hidden');
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('mainBestScore').innerText = bestScore;
 }
+
 function gameLoop() {
     if (!isPlaying) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#dcdde1"; ctx.fillRect(0, 400, 800, 100);
+    // 바닥
+    ctx.fillStyle = "#bdc3c7"; ctx.fillRect(0, 450, 800, 50);
     drawHoop();
     ball.update(); ball.draw();
     animationId = requestAnimationFrame(gameLoop);
 }
+
 canvas.addEventListener('mousedown', e => {
     if (!isPlaying || ball.isFired) return;
     const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
-    if (Math.hypot(mouseX - ball.x, mouseY - ball.y) < ball.radius) {
-        ball.isDragging = true; ball.dragStartX = mouseX; ball.dragStartY = mouseY;
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    if (Math.hypot(mx - ball.x, my - ball.y) < ball.radius) {
+        ball.isDragging = true;
     }
 });
+
+canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    mousePos.x = e.clientX - rect.left;
+    mousePos.y = e.clientY - rect.top;
+});
+
 canvas.addEventListener('mouseup', e => {
     if (ball.isDragging) {
-        const rect = canvas.getBoundingClientRect();
-        ball.vx = (ball.x - (e.clientX - rect.left)) * 0.15 * ball.group.speed;
-        ball.vy = (ball.y - (e.clientY - rect.top)) * 0.15 * ball.group.speed;
+        ball.vx = (ball.x - mousePos.x) * 0.15 * ball.group.speed;
+        ball.vy = (ball.y - mousePos.y) * 0.15 * ball.group.speed;
         ball.isDragging = false; ball.isFired = true;
     }
 });
+
 document.getElementById('mainBestScore').innerText = bestScore;
-document.getElementById('bestScoreDisplay').innerText = bestScore;
 </script>
 </body>
 </html>
 """
 
-# Streamlit 화면에 HTML 출력
 components.html(game_html, height=550)
