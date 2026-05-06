@@ -1,7 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="대학교 농구 게임 - 하드모드", layout="wide")
+st.set_page_config(page_title="대학교 농구 게임 - 무빙 타겟", layout="wide")
 
 game_html = """
 <!DOCTYPE html>
@@ -31,7 +31,7 @@ game_html = """
     </div>
     <div id="mainMenu" class="ui-layer">
         <h1>UNIV BASKET</h1>
-        <div style="font-size:30px; margin-bottom:20px;">공보다 작은 골대에 도전하세요!</div>
+        <div style="font-size:30px; margin-bottom:20px;">골대에 닿기만 하세요! 골대가 움직입니다.</div>
         <button onclick="startGame()">게임 시작</button>
     </div>
     <div id="gameOver" class="ui-layer hidden">
@@ -48,7 +48,6 @@ const ctx = canvas.getContext('2d');
 const gravity = 0.28;
 const powerFactor = 0.38;
 
-// 그룹 설정: 로고 텍스트 추가
 const groups = [
     { id: 1, speed: 2.25, addTime: 6, names: ["서울대", "연세대", "고려대", "성균관대", "서강대"], logos:["S","Y","K","S","S"], color: "#ff79c6" },
     { id: 2, speed: 1.0, addTime: 4, names: ["아주대", "단국대", "항공대", "가천대", "한국공대"], logos:["A","D","K","G","K"], color: "#8be9fd" },
@@ -60,9 +59,13 @@ let firedBalls = [];
 let currentBall = null;
 let mousePos = {x:0, y:0};
 
-// 골대 설정 (콩 크기의 사각형)
-const hoop = { x: 1050, y: 300, w: 25, h: 15 }; // 아주 작음
-const backboard = { x: 1120, y: 150, w: 15, h: 250 }; // 백보드
+// 골대 및 백보드 설정
+let hoopY = 300;
+let hoopDirection = 1;
+const hoopSpeed = 2; // 골대 이동 속도
+const hoopRange = { min: 150, max: 500 }; 
+const hoopWidth = 60; // 판정 범위를 위해 조금 넓힘
+const hoopHeight = 40;
 
 class Ball {
     constructor() {
@@ -72,7 +75,7 @@ class Ball {
         this.name = g.names[nIdx];
         this.logo = g.logos[nIdx];
         this.group = g;
-        this.radius = 52; // 공 크기 더 키움
+        this.radius = 55;
         this.x = 180; this.y = 580;
         this.vx = 0; this.vy = 0;
         this.isDragging = false; this.isFired = false; this.scored = false;
@@ -80,19 +83,13 @@ class Ball {
 
     draw() {
         if (this.isDragging) this.drawTrajectory();
-        
         ctx.save();
-        // 공 본체
         ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fillStyle = this.group.color; ctx.fill();
         ctx.strokeStyle = "white"; ctx.lineWidth = 5; ctx.stroke();
-        
-        // 대학교 로고 (가운데 큰 영문)
         ctx.fillStyle = "rgba(255,255,255,0.3)";
         ctx.font = "bold 50px Arial"; ctx.textAlign = "center";
         ctx.fillText(this.logo, this.x, this.y + 18);
-        
-        // 대학교 이름 (하단 텍스트)
         ctx.fillStyle = "white";
         ctx.font = "bold 22px Jua"; ctx.fillText(this.name, this.x, this.y + 5);
         ctx.restore();
@@ -115,38 +112,50 @@ class Ball {
         if (this.isFired) {
             this.x += this.vx; this.y += this.vy; this.vy += gravity;
             
-            // 1. 백보드 충돌 (튕기기)
-            if (this.x + this.radius > backboard.x && 
-                this.x - this.radius < backboard.x + backboard.w &&
-                this.y > backboard.y && this.y < backboard.y + backboard.h) {
-                this.vx *= -0.6; // 반사 및 속도 감소
-                this.x = backboard.x - this.radius; // 겹침 방지
+            // 백보드 충돌 (백보드는 고정)
+            if (this.x + this.radius > 1120 && this.x - this.radius < 1135 && this.y > 150 && this.y < 550) {
+                this.vx *= -0.6;
+                this.x = 1120 - this.radius;
             }
 
-            // 2. 콩만한 골대 골인 판정
-            if (!this.scored && 
-                this.x > hoop.x && this.x < hoop.x + hoop.w && 
-                this.y > hoop.y && this.y < hoop.y + hoop.h && this.vy > 0) {
-                score++; timeLeft += this.group.addTime;
-                this.scored = true;
-                document.getElementById('currentScore').innerText = score;
+            // 골대에 닿기만 해도 점수 인정 (충돌 체크)
+            if (!this.scored) {
+                const dx = this.x - (1050 + hoopWidth/2);
+                const dy = this.y - (hoopY + hoopHeight/2);
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                
+                // 공의 반지름과 골대의 범위를 고려한 접촉 판정
+                if (this.x + this.radius > 1050 && this.x - this.radius < 1050 + hoopWidth &&
+                    this.y + this.radius > hoopY && this.y - this.radius < hoopY + hoopHeight) {
+                    score++; timeLeft += this.group.addTime;
+                    this.scored = true;
+                    document.getElementById('currentScore').innerText = score;
+                }
             }
         }
     }
 }
 
+function updateHoop() {
+    hoopY += hoopSpeed * hoopDirection;
+    if (hoopY > hoopRange.max || hoopY < hoopRange.min) {
+        hoopDirection *= -1;
+    }
+}
+
 function drawHoopSystem() {
-    // 백보드
+    // 백보드 (길게 디자인)
     ctx.fillStyle = "#34495e";
-    ctx.fillRect(backboard.x, backboard.y, backboard.w, backboard.h);
+    ctx.fillRect(1120, 150, 15, 400);
     
-    // 콩만한 골대 (사각형)
+    // 움직이는 골대
     ctx.fillStyle = "#e74c3c";
-    ctx.fillRect(hoop.x, hoop.y, hoop.w, hoop.h);
+    ctx.fillRect(1050, hoopY, hoopWidth, hoopHeight);
     
-    // 골대 지지대
-    ctx.fillStyle = "#7f8c8d";
-    ctx.fillRect(hoop.x + hoop.w, hoop.y + 5, 45, 5);
+    // 골대 안쪽 선 (시각적 효과)
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1055, hoopY + 5, hoopWidth - 10, hoopHeight - 10);
 }
 
 function startGame() {
@@ -158,7 +167,6 @@ function startGame() {
     gameLoop();
 }
 
-// 타이머 루프 (별도 관리)
 setInterval(() => {
     if(isPlaying) {
         timeLeft -= 0.1;
@@ -177,15 +185,17 @@ function endGame() {
 function gameLoop() {
     if (!isPlaying) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#bdc3c7"; ctx.fillRect(0, 700, 1200, 50); // 바닥
+    ctx.fillStyle = "#bdc3c7"; ctx.fillRect(0, 700, 1200, 50); 
     
+    updateHoop();
     drawHoopSystem();
+    
     if (currentBall) currentBall.draw();
 
     for (let i = firedBalls.length - 1; i >= 0; i--) {
         firedBalls[i].update();
         firedBalls[i].draw();
-        if (firedBalls[i].y > 850 || firedBalls[i].x < -100) firedBalls.splice(i, 1);
+        if (firedBalls[i].y > 850 || firedBalls[i].x < -100 || firedBalls[i].x > 1300) firedBalls.splice(i, 1);
     }
     requestAnimationFrame(gameLoop);
 }
