@@ -1,9 +1,9 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="대학교 농구 게임 - 포물선 모드", layout="wide")
+st.set_page_config(page_title="대학교 농구 게임", layout="wide")
 
-# HTML/JS 시작
+# HTML/CSS/JS 코드를 담은 문자열 시작
 game_html = """
 <!DOCTYPE html>
 <html lang="ko">
@@ -17,7 +17,8 @@ game_html = """
         .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; }
         #mainMenu, #gameOver { background: rgba(236, 240, 241, 0.96); border-radius: 20px; }
         h1 { font-size: 90px; color: #e67e22; margin-bottom: 20px; text-shadow: 4px 4px #d35400; }
-        button { padding: 20px 70px; font-size: 40px; font-family: 'Jua'; cursor: pointer; background: #e67e22; color: white; border: none; border-radius: 60px; box-shadow: 0 8px #d35400; }
+        button { padding: 20px 70px; font-size: 40px; font-family: 'Jua'; cursor: pointer; background: #e67e22; color: white; border: none; border-radius: 60px; box-shadow: 0 8px #d35400; transition: 0.2s; }
+        button:hover { background: #d35400; transform: scale(1.05); }
         .hidden { display: none !important; }
         #hud { position: absolute; top: 30px; width: 100%; display: flex; justify-content: space-around; pointer-events: none; }
         .stat-box { font-size: 36px; color: #2c3e50; background: rgba(255,255,255,0.8); padding: 10px 40px; border-radius: 30px; border: 3px solid #34495e; }
@@ -27,19 +28,23 @@ game_html = """
 <div id="gameContainer">
     <div id="hud" class="hidden">
         <div class="stat-box">점수: <span id="currentScore">0</span></div>
-        <div class="stat-box" style="color: #e74c3c;">남은 시간: <span id="timer">15.0</span></div>
+        <div class="stat-box" style="color: #e74c3c;">시간: <span id="timer">15.0</span></div>
         <div class="stat-box">최고기록: <span id="bestScoreDisplay">0</span></div>
     </div>
+
     <div id="mainMenu" class="ui-layer">
         <h1>UNIV BASKET</h1>
-        <div style="font-size:30px; margin-bottom:20px;">포물선을 그리며 골대를 맞히세요! (15초 제한)</div>
-        <button onclick="startGame()">게임 시작</button>
+        <div style="font-size:30px; margin-bottom:20px;">포물선을 그려 골대를 맞히세요! (15초 제한)</div>
+        <div class="stat-box" style="margin-bottom:30px;">현재 최고 기록: <span id="mainBestScore">0</span></div>
+        <button id="startBtn">게임 시작</button>
     </div>
+
     <div id="gameOver" class="ui-layer hidden">
         <h1 style="color: #c0392b;">GAME OVER</h1>
         <div style="font-size: 45px; margin-bottom: 30px;">최종 점수: <span id="finalScore">0</span></div>
-        <button onclick="startGame()">다시하기</button>
+        <button id="toMainBtn">메인으로</button>
     </div>
+
     <canvas id="gameCanvas" width="1200" height="750"></canvas>
 </div>
 
@@ -60,7 +65,9 @@ let bestScore = localStorage.getItem('univBestScore') || 0;
 let firedBalls = [];
 let currentBall = null;
 let mousePos = {x:0, y:0};
+let timerId = null;
 
+// 골대 상태
 let hoopY = 300;
 let hoopVelocity = 3;
 let isHoopStopped = false;
@@ -103,6 +110,7 @@ class Ball {
         const maxV = 25;
         tx = Math.min(Math.max(tx, -maxV), maxV);
         ty = Math.min(Math.max(ty, -maxV), maxV);
+
         ctx.beginPath(); ctx.setLineDash([8, 12]); ctx.strokeStyle = "rgba(0,0,0,0.15)";
         let tempX = this.x, tempY = this.y, tempVX = tx, tempVY = ty;
         for (let i = 0; i < 40; i++) {
@@ -132,9 +140,8 @@ class Ball {
 
 function updateHoop() {
     if (isHoopStopped) { stopTimer--; if (stopTimer <= 0) isHoopStopped = false; return; }
-    let rand = Math.random();
-    if (rand < 0.005) { isHoopStopped = true; stopTimer = 30 + Math.random() * 30; }
-    else if (rand < 0.012) { hoopVelocity *= -1; }
+    if (Math.random() < 0.005) { isHoopStopped = true; stopTimer = 30 + Math.random() * 30; }
+    else if (Math.random() < 0.012) { hoopVelocity *= -1; }
     hoopY += hoopVelocity;
     if (hoopY > hoopRange.max || hoopY < hoopRange.min) { hoopVelocity *= -1; }
 }
@@ -154,28 +161,38 @@ function drawHoopSystem() {
 function startGame() {
     score = 0; timeLeft = 15.0; isPlaying = true; firedBalls = [];
     document.getElementById('currentScore').innerText = score;
-    document.getElementById('mainBestScore').innerText = bestScore;
     document.getElementById('bestScoreDisplay').innerText = bestScore;
     document.getElementById('mainMenu').classList.add('hidden');
     document.getElementById('gameOver').classList.add('hidden');
     document.getElementById('hud').classList.remove('hidden');
     currentBall = new Ball();
-    gameLoop();
+    
+    if(timerId) clearInterval(timerId);
+    timerId = setInterval(() => {
+        if(isPlaying) {
+            timeLeft -= 0.1;
+            document.getElementById('timer').innerText = Math.max(0, timeLeft).toFixed(1);
+            if (timeLeft <= 0) endGame();
+        }
+    }, 100);
+    
+    requestAnimationFrame(gameLoop);
 }
-
-setInterval(() => {
-    if(isPlaying) {
-        timeLeft -= 0.1;
-        document.getElementById('timer').innerText = Math.max(0, timeLeft).toFixed(1);
-        if (timeLeft <= 0) endGame();
-    }
-}, 100);
 
 function endGame() {
     isPlaying = false;
+    clearInterval(timerId);
     if (score > bestScore) { bestScore = score; localStorage.setItem('univBestScore', bestScore); }
     document.getElementById('finalScore').innerText = score;
     document.getElementById('gameOver').classList.remove('hidden');
+}
+
+function showMain() {
+    document.getElementById('gameOver').classList.add('hidden');
+    document.getElementById('mainMenu').classList.remove('hidden');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('mainBestScore').innerText = bestScore;
+    ctx.clearRect(0,0,1200,750);
 }
 
 function gameLoop() {
@@ -190,6 +207,10 @@ function gameLoop() {
     }
     requestAnimationFrame(gameLoop);
 }
+
+// 이벤트 리스너 연결
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('toMainBtn').addEventListener('click', showMain);
 
 canvas.addEventListener('mousedown', e => {
     if (!isPlaying || !currentBall) return;
@@ -218,11 +239,9 @@ canvas.addEventListener('mouseup', e => {
 });
 
 document.getElementById('mainBestScore').innerText = bestScore;
-document.getElementById('bestScoreDisplay').innerText = bestScore;
 </script>
 </body>
 </html>
 """
 
-# HTML 변수를 닫는 따옴표 이후 Streamlit 실행 코드
 components.html(game_html, height=800)
