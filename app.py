@@ -55,6 +55,8 @@ game_html = """
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const gravity = 0.25;
+const powerFactor = 0.375; // 기존 0.15에서 2.5배 상향 (0.15 * 2.5 = 0.375)
+
 const groups = [
     { id: 1, speed: 1.5, addTime: 7, names: ["서울대", "연세대", "고려대", "성균관대", "서강대", "한양대", "중앙대", "시립대", "경희대", "이화여대"] },
     { id: 2, speed: 1.0, addTime: 5, names: ["아주대", "단국대", "항공대", "가천대", "한국공대"] },
@@ -74,41 +76,25 @@ class Ball {
         this.vx = 0; this.vy = 0; this.isDragging = false; this.isFired = false;
     }
     draw() {
-        // 궤적 그리기 (드래그 중일 때만)
-        if (this.isDragging) {
-            this.drawTrajectory();
-        }
-        
+        if (this.isDragging) this.drawTrajectory();
         ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fillStyle = "#e67e22"; ctx.fill(); ctx.strokeStyle = "#d35400"; ctx.lineWidth = 3; ctx.stroke();
         ctx.fillStyle = "white"; ctx.font = "bold 14px Jua"; ctx.textAlign = "center";
         ctx.fillText(this.name, this.x, this.y + 5);
     }
-    
     drawTrajectory() {
-        const tx = (this.x - mousePos.x) * 0.15 * this.group.speed;
-        const ty = (this.y - mousePos.y) * 0.15 * this.group.speed;
-        
-        ctx.beginPath();
-        ctx.setLineDash([5, 8]);
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
-        
-        let tempX = this.x;
-        let tempY = this.y;
-        let tempVX = tx;
-        let tempVY = ty;
-
-        for (let i = 0; i < 30; i++) { // 30단계의 미래 위치 계산
+        // 2.5배 강화된 힘 반영
+        const tx = (this.x - mousePos.x) * powerFactor * this.group.speed;
+        const ty = (this.y - mousePos.y) * powerFactor * this.group.speed;
+        ctx.beginPath(); ctx.setLineDash([5, 8]); ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+        let tempX = this.x, tempY = this.y, tempVX = tx, tempVY = ty;
+        for (let i = 0; i < 40; i++) { // 궤적을 더 길게 표시
             ctx.moveTo(tempX, tempY);
-            tempX += tempVX;
-            tempY += tempVY;
-            tempVY += gravity;
+            tempX += tempVX; tempY += tempVY; tempVY += gravity;
             ctx.lineTo(tempX, tempY);
         }
-        ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.stroke(); ctx.setLineDash([]);
     }
-
     update() {
         if (this.isFired) {
             this.x += this.vx; this.y += this.vy; this.vy += gravity;
@@ -123,12 +109,8 @@ class Ball {
 }
 
 function drawHoop() {
-    // 백보드
-    ctx.fillStyle = "white";
-    ctx.fillRect(770, 100, 10, 100);
-    // 림 (골대)
-    ctx.strokeStyle = "#c0392b"; ctx.lineWidth = 6; 
-    ctx.strokeRect(700, 180, 70, 5);
+    ctx.fillStyle = "white"; ctx.fillRect(770, 100, 10, 100);
+    ctx.strokeStyle = "#c0392b"; ctx.lineWidth = 6; ctx.strokeRect(700, 180, 70, 5);
 }
 
 function startGame() {
@@ -163,7 +145,6 @@ function showMain() {
 function gameLoop() {
     if (!isPlaying) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // 바닥
     ctx.fillStyle = "#bdc3c7"; ctx.fillRect(0, 450, 800, 50);
     drawHoop();
     ball.update(); ball.draw();
@@ -174,9 +155,7 @@ canvas.addEventListener('mousedown', e => {
     if (!isPlaying || ball.isFired) return;
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    if (Math.hypot(mx - ball.x, my - ball.y) < ball.radius) {
-        ball.isDragging = true;
-    }
+    if (Math.hypot(mx - ball.x, my - ball.y) < ball.radius) ball.isDragging = true;
 });
 
 canvas.addEventListener('mousemove', e => {
@@ -187,13 +166,14 @@ canvas.addEventListener('mousemove', e => {
 
 canvas.addEventListener('mouseup', e => {
     if (ball.isDragging) {
-        ball.vx = (ball.x - mousePos.x) * 0.15 * ball.group.speed;
-        ball.vy = (ball.y - mousePos.y) * 0.15 * ball.group.speed;
+        ball.vx = (ball.x - mousePos.x) * powerFactor * ball.group.speed;
+        ball.vy = (ball.y - mousePos.y) * powerFactor * ball.group.speed;
         ball.isDragging = false; ball.isFired = true;
     }
 });
 
 document.getElementById('mainBestScore').innerText = bestScore;
+document.getElementById('bestScoreDisplay').innerText = bestScore;
 </script>
 </body>
 </html>
