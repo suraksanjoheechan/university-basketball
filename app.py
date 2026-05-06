@@ -1,7 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="대학교 농구 게임 - 무빙 타겟", layout="wide")
+st.set_page_config(page_title="대학교 농구 게임 - 불규칙 모드", layout="wide")
 
 game_html = """
 <!DOCTYPE html>
@@ -26,12 +26,12 @@ game_html = """
 <div id="gameContainer">
     <div id="hud" class="hidden">
         <div class="stat-box">점수: <span id="currentScore">0</span></div>
-        <div class="stat-box" style="color: #e74c3c;">시간: <span id="timer">7.0</span></div>
+        <div class="stat-box" style="color: #e74c3c;">남은 시간: <span id="timer">15.0</span></div>
         <div class="stat-box">최고기록: <span id="bestScoreDisplay">0</span></div>
     </div>
     <div id="mainMenu" class="ui-layer">
         <h1>UNIV BASKET</h1>
-        <div style="font-size:30px; margin-bottom:20px;">골대에 닿기만 하세요! 골대가 움직입니다.</div>
+        <div style="font-size:30px; margin-bottom:20px;">15초 안에 최대한 많이 넣으세요! 골대가 불규칙하게 움직입니다.</div>
         <button onclick="startGame()">게임 시작</button>
     </div>
     <div id="gameOver" class="ui-layer hidden">
@@ -49,23 +49,24 @@ const gravity = 0.28;
 const powerFactor = 0.38;
 
 const groups = [
-    { id: 1, speed: 2.25, addTime: 6, names: ["서울대", "연세대", "고려대", "성균관대", "서강대"], logos:["S","Y","K","S","S"], color: "#ff79c6" },
-    { id: 2, speed: 1.0, addTime: 4, names: ["아주대", "단국대", "항공대", "가천대", "한국공대"], logos:["A","D","K","G","K"], color: "#8be9fd" },
-    { id: 3, speed: 0.6, addTime: 3, names: ["부산대", "경북대", "전남대", "충남대", "전북대"], logos:["B","K","J","C","J"], color: "#50fa7b" }
+    { id: 1, speed: 2.25, names: ["서울대", "연세대", "고려대", "성균관대", "서강대"], logos:["S","Y","K","S","S"], color: "#ff79c6" },
+    { id: 2, speed: 1.0, names: ["아주대", "단국대", "항공대", "가천대", "한국공대"], logos:["A","D","K","G","K"], color: "#8be9fd" },
+    { id: 3, speed: 0.6, names: ["부산대", "경북대", "전남대", "충남대", "전북대"], logos:["B","K","J","C","J"], color: "#50fa7b" }
 ];
 
-let score = 0, timeLeft = 7, isPlaying = false, bestScore = localStorage.getItem('univBestScore') || 0;
+let score = 0, timeLeft = 15.0, isPlaying = false, bestScore = localStorage.getItem('univBestScore') || 0;
 let firedBalls = [];
 let currentBall = null;
 let mousePos = {x:0, y:0};
 
-// 골대 및 백보드 설정
+// 골대 상태
 let hoopY = 300;
-let hoopDirection = 1;
-const hoopSpeed = 2; // 골대 이동 속도
+let hoopVelocity = 3; 
+let isHoopStopped = false;
+let stopTimer = 0;
 const hoopRange = { min: 150, max: 500 }; 
-const hoopWidth = 60; // 판정 범위를 위해 조금 넓힘
-const hoopHeight = 40;
+const hoopWidth = 80; 
+const hoopHeight = 12; // 얇고 납작하게
 
 class Ball {
     constructor() {
@@ -112,22 +113,17 @@ class Ball {
         if (this.isFired) {
             this.x += this.vx; this.y += this.vy; this.vy += gravity;
             
-            // 백보드 충돌 (백보드는 고정)
-            if (this.x + this.radius > 1120 && this.x - this.radius < 1135 && this.y > 150 && this.y < 550) {
+            // 백보드 충돌
+            if (this.x + this.radius > 1120 && this.x - this.radius < 1135 && this.y > 100 && this.y < 600) {
                 this.vx *= -0.6;
                 this.x = 1120 - this.radius;
             }
 
-            // 골대에 닿기만 해도 점수 인정 (충돌 체크)
+            // 골대 접촉 판정
             if (!this.scored) {
-                const dx = this.x - (1050 + hoopWidth/2);
-                const dy = this.y - (hoopY + hoopHeight/2);
-                const distance = Math.sqrt(dx*dx + dy*dy);
-                
-                // 공의 반지름과 골대의 범위를 고려한 접촉 판정
-                if (this.x + this.radius > 1050 && this.x - this.radius < 1050 + hoopWidth &&
+                if (this.x + this.radius > 1040 && this.x - this.radius < 1040 + hoopWidth &&
                     this.y + this.radius > hoopY && this.y - this.radius < hoopY + hoopHeight) {
-                    score++; timeLeft += this.group.addTime;
+                    score++;
                     this.scored = true;
                     document.getElementById('currentScore').innerText = score;
                 }
@@ -137,29 +133,64 @@ class Ball {
 }
 
 function updateHoop() {
-    hoopY += hoopSpeed * hoopDirection;
-    if (hoopY > hoopRange.max || hoopY < hoopRange.min) {
-        hoopDirection *= -1;
+    if (isHoopStopped) {
+        stopTimer--;
+        if (stopTimer <= 0) isHoopStopped = false;
+        return;
+    }
+
+    // 불규칙한 움직임 로직 (매우 낮은 확률)
+    let rand = Math.random();
+    if (rand < 0.005) { // 0.5% 확률로 갑자기 멈춤
+        isHoopStopped = true;
+        stopTimer = 40 + Math.random() * 40; 
+    } else if (rand < 0.015) { // 1% 확률로 방향 급전환
+        hoopVelocity *= -1;
+    }
+
+    hoopY += hoopVelocity;
+
+    // 경계 도달 시 방향 전환
+    if (hoopY > hoopRange.max) {
+        hoopY = hoopRange.max;
+        hoopVelocity = -Math.abs(hoopVelocity);
+    } else if (hoopY < hoopRange.min) {
+        hoopY = hoopRange.min;
+        hoopVelocity = Math.abs(hoopVelocity);
     }
 }
 
 function drawHoopSystem() {
-    // 백보드 (길게 디자인)
+    // 백보드 지지대
     ctx.fillStyle = "#34495e";
-    ctx.fillRect(1120, 150, 15, 400);
-    
-    // 움직이는 골대
-    ctx.fillStyle = "#e74c3c";
-    ctx.fillRect(1050, hoopY, hoopWidth, hoopHeight);
-    
-    // 골대 안쪽 선 (시각적 효과)
-    ctx.strokeStyle = "white";
+    ctx.fillRect(1120, 100, 15, 500);
+
+    // 골대 그물 (흰색 점선 스타일)
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
     ctx.lineWidth = 2;
-    ctx.strokeRect(1055, hoopY + 5, hoopWidth - 10, hoopHeight - 10);
+    for(let i=0; i<=hoopWidth; i+=10) {
+        ctx.moveTo(1040 + i, hoopY + hoopHeight);
+        ctx.lineTo(1050 + (i*0.8), hoopY + hoopHeight + 50);
+    }
+    // 가로 그물망 선
+    for(let j=15; j<=45; j+=15) {
+        ctx.moveTo(1040 + (j/5), hoopY + hoopHeight + j);
+        ctx.lineTo(1040 + hoopWidth - (j/5), hoopY + hoopHeight + j);
+    }
+    ctx.stroke();
+    
+    // 얇고 납작한 빨간 골대 림
+    ctx.fillStyle = "#e74c3c";
+    ctx.fillRect(1040, hoopY, hoopWidth, hoopHeight);
+    
+    // 지지대 연결 부위
+    ctx.fillStyle = "#c0392b";
+    ctx.fillRect(1040 + hoopWidth, hoopY + 2, 20, 6);
 }
 
 function startGame() {
-    score = 0; timeLeft = 7.0; isPlaying = true; firedBalls = [];
+    score = 0; timeLeft = 15.0; isPlaying = true; firedBalls = [];
     document.getElementById('mainMenu').classList.add('hidden');
     document.getElementById('gameOver').classList.add('hidden');
     document.getElementById('hud').classList.remove('hidden');
@@ -167,6 +198,7 @@ function startGame() {
     gameLoop();
 }
 
+// 타이머
 setInterval(() => {
     if(isPlaying) {
         timeLeft -= 0.1;
